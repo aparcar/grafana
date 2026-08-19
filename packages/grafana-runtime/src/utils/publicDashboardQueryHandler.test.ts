@@ -17,6 +17,13 @@ jest.mock('../services/backendSrv', () => ({
   getBackendSrv: () => backendSrv,
 }));
 
+let search = new URLSearchParams();
+
+jest.mock('../services/LocationService', () => ({
+  ...jest.requireActual('../services/LocationService'),
+  locationService: { getSearch: () => search },
+}));
+
 function makeRequest(overrides: Partial<DataQueryRequest> = {}): DataQueryRequest {
   return {
     targets: [{ refId: 'A' }],
@@ -35,6 +42,7 @@ describe('publicDashboardQueryHandler', () => {
     fetchMock.mockReset();
     fetchMock.mockReturnValue({ data: { results: {} }, status: 200 });
     config.publicDashboardAccessToken = 'test-token';
+    search = new URLSearchParams();
   });
 
   afterEach(() => {
@@ -67,5 +75,45 @@ describe('publicDashboardQueryHandler', () => {
 
     expect(response.data).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  describe('template variables', () => {
+    it('omits variables when the URL has none', async () => {
+      await lastValueFrom(publicDashboardQueryHandler(makeRequest({ panelId: 42 })));
+
+      expect(fetchMock.mock.calls[0][0].data.variables).toBeUndefined();
+    });
+
+    it('forwards var- params from the URL', async () => {
+      search = new URLSearchParams('var-dev=01&var-env=prod');
+
+      await lastValueFrom(publicDashboardQueryHandler(makeRequest({ panelId: 42 })));
+
+      expect(fetchMock.mock.calls[0][0].data.variables).toEqual({ dev: ['01'], env: ['prod'] });
+    });
+
+    it('collects a repeated param into a multi-value variable', async () => {
+      search = new URLSearchParams('var-dev=01&var-dev=02');
+
+      await lastValueFrom(publicDashboardQueryHandler(makeRequest({ panelId: 42 })));
+
+      expect(fetchMock.mock.calls[0][0].data.variables).toEqual({ dev: ['01', '02'] });
+    });
+
+    it('ignores params that are not variables', async () => {
+      search = new URLSearchParams('from=now-6h&to=now&orgId=1&var-dev=01');
+
+      await lastValueFrom(publicDashboardQueryHandler(makeRequest({ panelId: 42 })));
+
+      expect(fetchMock.mock.calls[0][0].data.variables).toEqual({ dev: ['01'] });
+    });
+
+    it('ignores a bare var- param with no name', async () => {
+      search = new URLSearchParams('var-=01');
+
+      await lastValueFrom(publicDashboardQueryHandler(makeRequest({ panelId: 42 })));
+
+      expect(fetchMock.mock.calls[0][0].data.variables).toBeUndefined();
+    });
   });
 });

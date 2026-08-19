@@ -64,8 +64,10 @@ export function PublicDashboardScenePage({ route }: Props) {
     );
   }
 
-  // if no time picker render without url sync
-  if (dashboard.state.controls?.state.hideTimeControls) {
+  // Url sync is what feeds ?var-name=value into the scene's variables, so it is still needed when
+  // the dashboard has variables but no time picker.
+  const hasVariables = (dashboard.state.$variables?.state.variables.length ?? 0) > 0;
+  if (dashboard.state.controls?.state.hideTimeControls && !hasVariables) {
     return <PublicDashboardSceneRenderer model={dashboard} />;
   }
 

@@ -1,9 +1,11 @@
+import { config } from '@grafana/runtime';
 import { contextSrv } from 'app/core/services/context_srv';
 import { EmailSharingPricingAlert } from 'app/features/dashboard/components/ShareModal/SharePublicDashboard/ModalAlerts/EmailSharingPricingAlert';
 import { UnsupportedDataSourcesAlert } from 'app/features/dashboard/components/ShareModal/SharePublicDashboard/ModalAlerts/UnsupportedDataSourcesAlert';
 import { UnsupportedTemplateVariablesAlert } from 'app/features/dashboard/components/ShareModal/SharePublicDashboard/ModalAlerts/UnsupportedTemplateVariablesAlert';
 import {
   isEmailSharingEnabled,
+  isVariableSupportedOnPublicDashboard,
   type PublicDashboard,
   PublicDashboardShareType,
 } from 'app/features/dashboard/components/ShareModal/SharePublicDashboard/SharePublicDashboardUtils';
@@ -18,7 +20,10 @@ export default function ShareAlerts({ publicDashboard }: { publicDashboard?: Pub
   const { dashboard } = useShareDrawerContext();
   const hasWritePermissions = contextSrv.hasPermission(AccessControlAction.DashboardsPublicWrite);
   const unsupportedDataSources = useUnsupportedDatasources(dashboard);
-  const hasTemplateVariables = (dashboard.state.$variables?.state.variables.length ?? 0) > 0;
+  const variables = dashboard.state.$variables?.state.variables ?? [];
+  const hasTemplateVariables = config.featureToggles.publicDashboardsVariables
+    ? variables.some((variable) => !isVariableSupportedOnPublicDashboard(variable.state))
+    : variables.length > 0;
 
   return (
     <>

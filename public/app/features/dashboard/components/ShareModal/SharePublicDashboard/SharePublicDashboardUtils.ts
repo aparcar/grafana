@@ -42,9 +42,29 @@ export interface SessionUser {
   totalDashboards: number;
 }
 
+// A viewer can pick a value for these through ?var-name=value, because the author enumerated the
+// options up front and the backend can check a requested value against them.
+const OVERRIDABLE_VARIABLE_TYPES = ['custom', 'interval'];
+
+// These resolve to a fixed value that is always what the author configured, so freezing them on a
+// public dashboard is not surprising.
+const FIXED_VARIABLE_TYPES = ['constant', 'textbox'];
+
+/**
+ * True when a variable keeps working on a public dashboard, either because viewers can choose its
+ * value or because it has a fixed one. Anything else (query, datasource, ad hoc, group by) is
+ * frozen at the value the dashboard was saved with, which can go stale.
+ */
+export const isVariableSupportedOnPublicDashboard = (variable: { type: string }): boolean =>
+  OVERRIDABLE_VARIABLE_TYPES.includes(variable.type) || FIXED_VARIABLE_TYPES.includes(variable.type);
+
 // Instance methods
 export const dashboardHasTemplateVariables = (variables: TypedVariableModel[]): boolean => {
-  return variables.length > 0;
+  if (!config.featureToggles.publicDashboardsVariables) {
+    return variables.length > 0;
+  }
+
+  return variables.some((variable) => !isVariableSupportedOnPublicDashboard(variable));
 };
 
 export const publicDashboardPersisted = (publicDashboard?: PublicDashboard): boolean => {

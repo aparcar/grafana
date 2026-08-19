@@ -14645,6 +14645,8 @@
       "success-share-type-change": "Dashboard access updated: Only specific people can now access with the link"
     },
     "modal-alerts": {
+      "locked-template-variable-alert-desc": "Query, data source and ad hoc variables keep the value this dashboard was saved with. Only custom and interval variables can be changed by viewers, through the dashboard URL.",
+      "locked-template-variable-alert-title": "Some template variables are locked",
       "save-dashboard-changes-alert-title": "Please save your dashboard changes before updating the public configuration",
       "unsupport-data-source-alert-readmore-link": "Read more about supported data sources",
       "unsupported-data-source-alert-title": "Unsupported data sources",

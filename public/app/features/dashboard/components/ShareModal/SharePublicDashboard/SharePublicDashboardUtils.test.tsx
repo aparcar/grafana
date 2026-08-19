@@ -1,5 +1,5 @@
 import { type DataSourceApi, type DataSourceRef, type DataQuery, type TypedVariableModel } from '@grafana/data';
-import { DataSourceWithBackend } from '@grafana/runtime';
+import { config, DataSourceWithBackend } from '@grafana/runtime';
 import { getDataSourceInstance } from '@grafana/runtime/unstable';
 import { updateConfig } from 'app/core/config';
 import { mockDataSource } from 'app/features/alerting/unified/mocks';
@@ -46,6 +46,34 @@ describe('dashboardHasTemplateVariables', () => {
     //@ts-ignore
     let variables: TypedVariableModel[] = ['a'];
     expect(dashboardHasTemplateVariables(variables)).toBe(true);
+  });
+
+  describe('with publicDashboardsVariables enabled', () => {
+    const asVariables = (...types: string[]) => types.map((type) => ({ type })) as TypedVariableModel[];
+
+    beforeEach(() => {
+      config.featureToggles.publicDashboardsVariables = true;
+    });
+
+    afterEach(() => {
+      config.featureToggles.publicDashboardsVariables = undefined;
+    });
+
+    it('does not warn about variables viewers can choose a value for', () => {
+      expect(dashboardHasTemplateVariables(asVariables('custom', 'interval'))).toBe(false);
+    });
+
+    it('does not warn about variables with a fixed value', () => {
+      expect(dashboardHasTemplateVariables(asVariables('constant', 'textbox'))).toBe(false);
+    });
+
+    it.each(['query', 'datasource', 'adhoc', 'groupby'])('warns about a %s variable', (type) => {
+      expect(dashboardHasTemplateVariables(asVariables(type))).toBe(true);
+    });
+
+    it('warns when only some of the variables are frozen', () => {
+      expect(dashboardHasTemplateVariables(asVariables('custom', 'query'))).toBe(true);
+    });
   });
 });
 
