@@ -152,6 +152,10 @@ type PublicDashboardQueryDTO struct {
 	MaxDataPoints   int64
 	QueryCachingTTL int64
 	TimeRange       TimeRangeDTO
+	// Variables holds template variable overrides requested by the viewer, keyed by variable name.
+	// Values are never trusted: they are checked against the options the dashboard author saved on
+	// the variable before any of them reach a query. See internal/service/variables.go.
+	Variables map[string][]string
 }
 
 type AnnotationsQueryDTO struct {

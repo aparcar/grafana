@@ -29,6 +29,11 @@ export interface FeatureToggles {
   */
   publicDashboardsEmailSharing?: boolean;
   /**
+  * Enables template variables on public dashboards, restricted to the options saved on each variable
+  * @default false
+  */
+  publicDashboardsVariables?: boolean;
+  /**
   * Support new streaming approach for loki (prototype, needs special loki build)
   * @default false
   */

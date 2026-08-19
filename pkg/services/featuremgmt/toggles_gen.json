@@ -5398,6 +5398,20 @@
     },
     {
       "metadata": {
+        "name": "publicDashboardsVariables",
+        "resourceVersion": "1787125816664",
+        "creationTimestamp": "2026-08-19T07:50:16Z"
+      },
+      "spec": {
+        "description": "Enables template variables on public dashboards, restricted to the options saved on each variable",
+        "stage": "experimental",
+        "codeowner": "@grafana/grafana-operator-experience-squad",
+        "hideFromDocs": true,
+        "expression": "false"
+      }
+    },
+    {
+      "metadata": {
         "name": "pyroscopeUTF8LabelNames",
         "resourceVersion": "1779440584464",
         "creationTimestamp": "2026-05-22T09:03:04Z"

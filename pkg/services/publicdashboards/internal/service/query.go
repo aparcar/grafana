@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/grafana/pkg/expr"
 	"github.com/grafana/grafana/pkg/services/annotations"
 	"github.com/grafana/grafana/pkg/services/dashboards"
+	"github.com/grafana/grafana/pkg/services/featuremgmt"
 	"github.com/grafana/grafana/pkg/services/publicdashboards/internal/models"
 	"github.com/grafana/grafana/pkg/services/publicdashboards/internal/validation"
 	"github.com/grafana/grafana/pkg/tsdb/grafanads"
@@ -176,6 +177,11 @@ func (pd *PublicDashboardServiceImpl) buildMetricRequest(dashboard *dashboards.D
 		return dtos.MetricRequest{}, models.ErrPanelNotFound.Errorf("buildMetricRequest: public dashboard panel not found")
 	}
 
+	queries, err := pd.interpolateVariables(queries, extractVariablesV1(dashboard.Data), reqDTO)
+	if err != nil {
+		return dtos.MetricRequest{}, err
+	}
+
 	ts := buildTimeSettings(dashboard, reqDTO, publicDashboard, panelID)
 
 	// determine safe resolution to query data at
@@ -193,12 +199,33 @@ func (pd *PublicDashboardServiceImpl) buildMetricRequest(dashboard *dashboards.D
 	}, nil
 }
 
+// interpolateVariables resolves the dashboard's template variables against the viewer's requested
+// overrides and substitutes them into the panel queries. It is a no-op unless the feature toggle
+// is on, so existing public dashboards keep sending their queries through untouched.
+func (pd *PublicDashboardServiceImpl) interpolateVariables(queries []*simplejson.Json, vars []publicVariable, reqDTO models.PublicDashboardQueryDTO) ([]*simplejson.Json, error) {
+	if !pd.features.IsEnabledGlobally(featuremgmt.FlagPublicDashboardsVariables) {
+		return queries, nil
+	}
+
+	values, err := resolveVariables(vars, reqDTO.Variables)
+	if err != nil {
+		return nil, err
+	}
+
+	return interpolateQueries(queries, values), nil
+}
+
 func (pd *PublicDashboardServiceImpl) buildMetricRequestV2(dashboard *dashboards.Dashboard, publicDashboard *models.PublicDashboard, panelID int64, reqDTO models.PublicDashboardQueryDTO) (dtos.MetricRequest, error) {
 	// group queries by panel for V2
 	queriesByPanel := groupQueriesByPanelIdV2(dashboard.Data)
 	queries, ok := queriesByPanel[panelID]
 	if !ok {
 		return dtos.MetricRequest{}, models.ErrPanelNotFound.Errorf("buildMetricRequestV2: public dashboard panel not found")
+	}
+
+	queries, err := pd.interpolateVariables(queries, extractVariablesV2(dashboard.Data), reqDTO)
+	if err != nil {
+		return dtos.MetricRequest{}, err
 	}
 
 	ts := buildTimeSettingsV2(dashboard, reqDTO, publicDashboard, panelID)
