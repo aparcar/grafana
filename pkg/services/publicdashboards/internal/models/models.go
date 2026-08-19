@@ -51,15 +51,22 @@ type PublicDashboard struct {
 	AnnotationsEnabled   bool          `json:"annotationsEnabled" xorm:"annotations_enabled"`
 	Share                ShareType     `json:"share" xorm:"share"`
 	Recipients           []EmailDTO    `json:"recipients,omitempty" xorm:"-"`
+	// TemplateVariables holds option lists that cannot be derived from the dashboard itself,
+	// captured while an authenticated author was present. See TemplateVariables.
+	//
+	// Not a pointer: xorm allocates the struct when reading, so a nil written on insert would come
+	// back as a non-nil empty one and a public dashboard would not survive a round trip unchanged.
+	TemplateVariables TemplateVariables `json:"templateVariables,omitempty" xorm:"template_variables"`
 }
 
 type PublicDashboardDTO struct {
-	Uid                  string    `json:"uid"`
-	AccessToken          string    `json:"accessToken"`
-	TimeSelectionEnabled *bool     `json:"timeSelectionEnabled"`
-	IsEnabled            *bool     `json:"isEnabled"`
-	AnnotationsEnabled   *bool     `json:"annotationsEnabled"`
-	Share                ShareType `json:"share"`
+	Uid                  string             `json:"uid"`
+	AccessToken          string             `json:"accessToken"`
+	TimeSelectionEnabled *bool              `json:"timeSelectionEnabled"`
+	IsEnabled            *bool              `json:"isEnabled"`
+	AnnotationsEnabled   *bool              `json:"annotationsEnabled"`
+	Share                ShareType          `json:"share"`
+	TemplateVariables    *TemplateVariables `json:"templateVariables,omitempty"`
 }
 
 type EmailDTO struct {
@@ -130,6 +137,41 @@ func (ts *TimeSettings) FromDB(data []byte) error {
 
 func (ts *TimeSettings) ToDB() ([]byte, error) {
 	return json.Marshal(ts)
+}
+
+// TemplateVariables records the values a viewer is allowed to choose for variables whose options
+// cannot be read from the dashboard.
+//
+// A query variable's options come from running its query against the datasource, which is done by
+// the datasource plugin in the browser and which a public dashboard viewer must never be able to
+// trigger. So the author's browser resolves them while it is rendering the variable picker, and
+// sends them when the public dashboard is saved. This is a snapshot: it stops reflecting the
+// datasource as soon as the underlying data changes, and is refreshed when the author saves again.
+//
+// Options are keyed by variable name. Variables absent here fall back to the dashboard, which is
+// the live source for custom and interval variables.
+type TemplateVariables struct {
+	Version int                 `json:"version"`
+	Options map[string][]string `json:"options"`
+}
+
+// OptionsFor returns the recorded options for a variable, or nil when it has none.
+func (tv TemplateVariables) OptionsFor(name string) []string {
+	return tv.Options[name]
+}
+
+// IsEmpty reports whether anything was recorded, so callers can store NULL instead of an empty
+// JSON object.
+func (tv TemplateVariables) IsEmpty() bool {
+	return len(tv.Options) == 0
+}
+
+func (tv *TemplateVariables) FromDB(data []byte) error {
+	return json.Unmarshal(data, tv)
+}
+
+func (tv *TemplateVariables) ToDB() ([]byte, error) {
+	return json.Marshal(tv)
 }
 
 // DTO for transforming user input in the api

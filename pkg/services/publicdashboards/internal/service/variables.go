@@ -10,12 +10,18 @@ import (
 )
 
 // Public dashboards are viewed anonymously, so a viewer must never be able to put an arbitrary
-// string into a query. Only variables whose author enumerated their options up front can be
-// overridden from the request, and only with a value drawn from that enumeration. Every other
-// variable is frozen at the value the dashboard was saved with.
+// string into a query. A variable can only be overridden from the request when its options are
+// known in advance, and only with a value drawn from that set. Every other variable is frozen at
+// the value the dashboard was saved with.
+//
+// Custom and interval variables carry their options in the dashboard. Query variables do not:
+// resolving those means running the variable query, which is the browser's job and which a public
+// viewer must never trigger, so their options come from the snapshot the author's browser recorded
+// when the public dashboard was saved.
 const (
 	variableTypeCustom   = "custom"
 	variableTypeInterval = "interval"
+	variableTypeQuery    = "query"
 )
 
 // allValue is the sentinel Grafana uses for the "All" option on a multi-value variable.
@@ -99,32 +105,15 @@ func (v publicVariable) accept(values []string) ([]string, error) {
 }
 
 // extractVariablesV1 reads templating.list from a classic dashboard.
-func extractVariablesV1(data *simplejson.Json) []publicVariable {
+func extractVariablesV1(data *simplejson.Json, recorded models.TemplateVariables) []publicVariable {
 	list := data.GetPath("templating", "list").MustArray()
 	vars := make([]publicVariable, 0, len(list))
 
 	for _, item := range list {
-		v := simplejson.NewFromAny(item)
-		name := v.Get("name").MustString()
-		if name == "" {
-			continue
+		spec := simplejson.NewFromAny(item)
+		if v, ok := newPublicVariable(spec.Get("type").MustString(), spec, recorded); ok {
+			vars = append(vars, v)
 		}
-
-		varType := v.Get("type").MustString()
-		options := optionValues(v.Get("options").MustArray())
-		if len(options) == 0 {
-			options = parseOptionsQuery(v.Get("query"))
-		}
-
-		vars = append(vars, publicVariable{
-			name:        name,
-			options:     options,
-			overridable: isOverridable(varType),
-			multi:       v.Get("multi").MustBool(),
-			includeAll:  v.Get("includeAll").MustBool(),
-			allValue:    v.Get("allValue").MustString(),
-			current:     currentValues(v.Get("current")),
-		})
 	}
 
 	return vars
@@ -132,41 +121,69 @@ func extractVariablesV1(data *simplejson.Json) []publicVariable {
 
 // extractVariablesV2 reads the variables array from a schema V2 dashboard, where each entry is a
 // kind wrapper such as {"kind": "CustomVariable", "spec": {...}}.
-func extractVariablesV2(data *simplejson.Json) []publicVariable {
+func extractVariablesV2(data *simplejson.Json, recorded models.TemplateVariables) []publicVariable {
 	list := data.Get("variables").MustArray()
 	vars := make([]publicVariable, 0, len(list))
 
 	for _, item := range list {
 		kind := simplejson.NewFromAny(item)
-		spec := kind.Get("spec")
-		name := spec.Get("name").MustString()
-		if name == "" {
-			continue
-		}
-
 		// "CustomVariable" -> "custom", so the two schemas share one overridability rule.
 		varType := strings.ToLower(strings.TrimSuffix(kind.Get("kind").MustString(), "Variable"))
-		options := optionValues(spec.Get("options").MustArray())
-		if len(options) == 0 {
-			options = parseOptionsQuery(spec.Get("query"))
+		if v, ok := newPublicVariable(varType, kind.Get("spec"), recorded); ok {
+			vars = append(vars, v)
 		}
-
-		vars = append(vars, publicVariable{
-			name:        name,
-			options:     options,
-			overridable: isOverridable(varType),
-			multi:       spec.Get("multi").MustBool(),
-			includeAll:  spec.Get("includeAll").MustBool(),
-			allValue:    spec.Get("allValue").MustString(),
-			current:     currentValues(spec.Get("current")),
-		})
 	}
 
 	return vars
 }
 
-func isOverridable(varType string) bool {
-	return varType == variableTypeCustom || varType == variableTypeInterval
+// newPublicVariable normalises one variable and decides whether a viewer may choose its value.
+func newPublicVariable(varType string, spec *simplejson.Json, recorded models.TemplateVariables) (publicVariable, bool) {
+	name := spec.Get("name").MustString()
+	if name == "" {
+		return publicVariable{}, false
+	}
+
+	v := publicVariable{
+		name:       name,
+		multi:      spec.Get("multi").MustBool(),
+		includeAll: spec.Get("includeAll").MustBool(),
+		allValue:   spec.Get("allValue").MustString(),
+		current:    currentValues(spec.Get("current")),
+	}
+
+	switch varType {
+	case variableTypeCustom, variableTypeInterval:
+		// The dashboard is the live source, so an author who edits the option list narrows what
+		// viewers can ask for immediately.
+		v.options = optionValues(spec.Get("options").MustArray())
+		if len(v.options) == 0 {
+			v.options = parseOptionsQuery(spec.Get("query"))
+		}
+		v.overridable = len(v.options) > 0
+
+	case variableTypeQuery:
+		// The dashboard's own options for a query variable are whatever the last author to save it
+		// happened to have loaded, so they are not a deliberate allowlist. Use only the options
+		// recorded against the public dashboard; without them the variable stays frozen.
+		// The sentinel is dropped here as well as in the client, since this is the trust boundary.
+		v.options = withoutAllSentinel(recorded.OptionsFor(name))
+		v.overridable = len(v.options) > 0
+	}
+
+	return v, true
+}
+
+// withoutAllSentinel drops the "All" pseudo-option, which is expanded by accept() rather than
+// being a value in its own right.
+func withoutAllSentinel(options []string) []string {
+	filtered := make([]string, 0, len(options))
+	for _, option := range options {
+		if option != allValue {
+			filtered = append(filtered, option)
+		}
+	}
+	return filtered
 }
 
 func optionValues(options []interface{}) []string {

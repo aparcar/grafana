@@ -177,7 +177,7 @@ func (pd *PublicDashboardServiceImpl) buildMetricRequest(dashboard *dashboards.D
 		return dtos.MetricRequest{}, models.ErrPanelNotFound.Errorf("buildMetricRequest: public dashboard panel not found")
 	}
 
-	queries, err := pd.interpolateVariables(queries, extractVariablesV1(dashboard.Data), reqDTO)
+	queries, err := pd.interpolateVariables(queries, extractVariablesV1(dashboard.Data, publicDashboard.TemplateVariables), reqDTO)
 	if err != nil {
 		return dtos.MetricRequest{}, err
 	}
@@ -223,7 +223,7 @@ func (pd *PublicDashboardServiceImpl) buildMetricRequestV2(dashboard *dashboards
 		return dtos.MetricRequest{}, models.ErrPanelNotFound.Errorf("buildMetricRequestV2: public dashboard panel not found")
 	}
 
-	queries, err := pd.interpolateVariables(queries, extractVariablesV2(dashboard.Data), reqDTO)
+	queries, err := pd.interpolateVariables(queries, extractVariablesV2(dashboard.Data, publicDashboard.TemplateVariables), reqDTO)
 	if err != nil {
 		return dtos.MetricRequest{}, err
 	}

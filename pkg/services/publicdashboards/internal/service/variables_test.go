@@ -52,7 +52,7 @@ func devicesDashboardV1(t *testing.T) *simplejson.Json {
 }
 
 func TestExtractVariablesV1(t *testing.T) {
-	vars := extractVariablesV1(devicesDashboardV1(t))
+	vars := extractVariablesV1(devicesDashboardV1(t), models.TemplateVariables{})
 	require.Len(t, vars, 3)
 
 	assert.Equal(t, "dev", vars[0].name)
@@ -77,7 +77,7 @@ func TestExtractVariablesV1_OptionsFallBackToQuery(t *testing.T) {
 	}`))
 	require.NoError(t, err)
 
-	vars := extractVariablesV1(data)
+	vars := extractVariablesV1(data, models.TemplateVariables{})
 	require.Len(t, vars, 1)
 	assert.Equal(t, []string{"01", "02"}, vars[0].options, "display:value pairs should contribute the value side")
 }
@@ -102,7 +102,7 @@ func TestExtractVariablesV2(t *testing.T) {
 	}`))
 	require.NoError(t, err)
 
-	vars := extractVariablesV2(data)
+	vars := extractVariablesV2(data, models.TemplateVariables{})
 	require.Len(t, vars, 2)
 
 	assert.Equal(t, "dev", vars[0].name)
@@ -114,7 +114,7 @@ func TestExtractVariablesV2(t *testing.T) {
 }
 
 func TestResolveVariables(t *testing.T) {
-	vars := extractVariablesV1(devicesDashboardV1(t))
+	vars := extractVariablesV1(devicesDashboardV1(t), models.TemplateVariables{})
 
 	t.Run("falls back to the saved value when nothing is requested", func(t *testing.T) {
 		values, err := resolveVariables(vars, nil)
@@ -187,7 +187,7 @@ func TestResolveVariables_Multi(t *testing.T) {
 		}]}
 	}`))
 	require.NoError(t, err)
-	vars := extractVariablesV1(data)
+	vars := extractVariablesV1(data, models.TemplateVariables{})
 
 	require.Equal(t, []string{"01", "02", "03"}, vars[0].options, "the All sentinel is not itself an option")
 
@@ -218,7 +218,7 @@ func TestResolveVariables_Multi(t *testing.T) {
 }
 
 func TestResolveVariables_AllRejectedWhenNotEnabled(t *testing.T) {
-	vars := extractVariablesV1(devicesDashboardV1(t))
+	vars := extractVariablesV1(devicesDashboardV1(t), models.TemplateVariables{})
 	_, err := resolveVariables(vars, map[string][]string{"dev": {allValue}})
 	require.Error(t, err)
 }
@@ -312,7 +312,7 @@ func serviceWithVariables(t *testing.T, enabled bool) *PublicDashboardServiceImp
 }
 
 func TestInterpolateVariables_ToggleGate(t *testing.T) {
-	vars := extractVariablesV1(devicesDashboardV1(t))
+	vars := extractVariablesV1(devicesDashboardV1(t), models.TemplateVariables{})
 	newQuery := func(t *testing.T) *simplejson.Json {
 		t.Helper()
 		q, err := simplejson.NewJson([]byte(`{"expr": "up{device=\"$dev\"}"}`))
@@ -401,4 +401,126 @@ func TestBuildMetricRequestInterpolatesVariables(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, `up{device="01"}`, req.Queries[0].Get("expr").MustString())
+}
+
+func recorded(options map[string][]string) models.TemplateVariables {
+	return models.TemplateVariables{Version: 1, Options: options}
+}
+
+func TestExtractVariables_QueryVariableUsesRecordedOptions(t *testing.T) {
+	t.Run("stays frozen without recorded options", func(t *testing.T) {
+		vars := extractVariablesV1(devicesDashboardV1(t), models.TemplateVariables{})
+
+		host := vars[2]
+		require.Equal(t, "host", host.name)
+		assert.False(t, host.overridable)
+		assert.Empty(t, host.options)
+	})
+
+	t.Run("becomes overridable from the recorded options", func(t *testing.T) {
+		vars := extractVariablesV1(devicesDashboardV1(t), recorded(map[string][]string{
+			"host": {"web-1", "web-2", "web-3"},
+		}))
+
+		host := vars[2]
+		require.Equal(t, "host", host.name)
+		assert.True(t, host.overridable)
+		assert.Equal(t, []string{"web-1", "web-2", "web-3"}, host.options)
+	})
+
+	t.Run("ignores the dashboard's own stale option list", func(t *testing.T) {
+		// The dashboard has only web-1 saved against `host`; whatever the author's browser last
+		// happened to load is not an allowlist, so only the recorded options count.
+		vars := extractVariablesV1(devicesDashboardV1(t), recorded(map[string][]string{
+			"host": {"web-2"},
+		}))
+
+		assert.Equal(t, []string{"web-2"}, vars[2].options)
+	})
+
+	t.Run("does not let recorded options widen a custom variable", func(t *testing.T) {
+		// The dashboard is the live source for custom variables, so an author who removes an option
+		// there takes it away immediately even if a stale snapshot still lists it.
+		vars := extractVariablesV1(devicesDashboardV1(t), recorded(map[string][]string{
+			"dev": {"01", "02", "03", "99"},
+		}))
+
+		assert.Equal(t, []string{"01", "02", "03"}, vars[0].options)
+
+		_, err := resolveVariables(vars, map[string][]string{"dev": {"99"}})
+		require.Error(t, err)
+	})
+
+	t.Run("works for schema v2", func(t *testing.T) {
+		data, err := simplejson.NewJson([]byte(`{
+			"variables": [
+				{"kind": "QueryVariable", "spec": {"name": "host", "current": {"value": "web-1"}}}
+			]
+		}`))
+		require.NoError(t, err)
+
+		vars := extractVariablesV2(data, recorded(map[string][]string{"host": {"web-1", "web-2"}}))
+		require.Len(t, vars, 1)
+		assert.True(t, vars[0].overridable)
+		assert.Equal(t, []string{"web-1", "web-2"}, vars[0].options)
+	})
+}
+
+func TestResolveVariables_QueryVariable(t *testing.T) {
+	vars := extractVariablesV1(devicesDashboardV1(t), recorded(map[string][]string{
+		"host": {"web-1", "web-2"},
+	}))
+
+	t.Run("accepts a recorded value", func(t *testing.T) {
+		values, err := resolveVariables(vars, map[string][]string{"host": {"web-2"}})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"web-2"}, values["host"])
+	})
+
+	t.Run("rejects a value that was never recorded", func(t *testing.T) {
+		_, err := resolveVariables(vars, map[string][]string{"host": {"web-9"}})
+		require.Error(t, err)
+		assert.True(t, models.ErrInvalidVariableValue.Is(err))
+	})
+
+	t.Run("falls back to the saved value when nothing is requested", func(t *testing.T) {
+		values, err := resolveVariables(vars, nil)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"web-1"}, values["host"])
+	})
+}
+
+func TestBuildMetricRequestInterpolatesQueryVariable(t *testing.T) {
+	data, err := simplejson.NewJson([]byte(`{
+		"time": {"from": "now-6h", "to": "now"},
+		"templating": {"list": [
+			{"type": "query", "name": "host", "current": {"value": "web-1"}}
+		]},
+		"panels": [{
+			"id": 1,
+			"targets": [{"refId": "A", "expr": "up{host=\"$host\"}"}]
+		}]
+	}`))
+	require.NoError(t, err)
+
+	dashboard := &dashboards.Dashboard{UID: "dash", Data: data}
+	pubdash := &models.PublicDashboard{
+		Uid:               "pubdash",
+		DashboardUid:      "dash",
+		TemplateVariables: recorded(map[string][]string{"host": {"web-1", "web-2"}}),
+	}
+	pd := serviceWithVariables(t, true)
+
+	req, err := pd.buildMetricRequest(dashboard, pubdash, 1, models.PublicDashboardQueryDTO{
+		IntervalMs: 10000, MaxDataPoints: 200,
+		Variables: map[string][]string{"host": {"web-2"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, `up{host="web-2"}`, req.Queries[0].Get("expr").MustString())
+
+	_, err = pd.buildMetricRequest(dashboard, pubdash, 1, models.PublicDashboardQueryDTO{
+		IntervalMs: 10000, MaxDataPoints: 200,
+		Variables: map[string][]string{"host": {"web-9"}},
+	})
+	require.Error(t, err, "a host that was never recorded must not reach the datasource")
 }

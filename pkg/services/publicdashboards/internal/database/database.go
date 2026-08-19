@@ -260,12 +260,24 @@ func (d *PublicDashboardStoreImpl) Update(ctx context.Context, cmd models.SavePu
 			return err
 		}
 
-		sqlResult, err := sess.Exec("UPDATE dashboard_public SET is_enabled = ?, annotations_enabled = ?, time_selection_enabled = ?, share = ?, time_settings = ?, updated_by = ?, updated_at = ? WHERE uid = ? AND org_id = ?",
+		// Kept nullable so a public dashboard with no recorded options stores NULL rather than an
+		// empty JSON object.
+		var templateVariablesJSON any
+		if !cmd.PublicDashboard.TemplateVariables.IsEmpty() {
+			encoded, err := json.Marshal(cmd.PublicDashboard.TemplateVariables)
+			if err != nil {
+				return err
+			}
+			templateVariablesJSON = string(encoded)
+		}
+
+		sqlResult, err := sess.Exec("UPDATE dashboard_public SET is_enabled = ?, annotations_enabled = ?, time_selection_enabled = ?, share = ?, time_settings = ?, template_variables = ?, updated_by = ?, updated_at = ? WHERE uid = ? AND org_id = ?",
 			cmd.PublicDashboard.IsEnabled,
 			cmd.PublicDashboard.AnnotationsEnabled,
 			cmd.PublicDashboard.TimeSelectionEnabled,
 			cmd.PublicDashboard.Share,
 			string(timeSettingsJSON),
+			templateVariablesJSON,
 			cmd.PublicDashboard.UpdatedBy,
 			cmd.PublicDashboard.UpdatedAt.UTC(),
 			cmd.PublicDashboard.Uid,

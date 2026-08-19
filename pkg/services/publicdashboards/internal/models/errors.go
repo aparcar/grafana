@@ -17,6 +17,7 @@ var (
 	ErrPublicDashboardIdentifierNotSet     = errutil.BadRequest("publicdashboards.identifierNotSet", errutil.WithPublicMessage("No Uid for dashboard specified"))
 	ErrPublicDashboardHasTemplateVariables = errutil.BadRequest("publicdashboards.hasTemplateVariables", errutil.WithPublicMessage("Dashboard has template variables"))
 	ErrInvalidVariableValue                = errutil.BadRequest("publicdashboards.invalidVariableValue", errutil.WithPublicMessage("Invalid template variable value"))
+	ErrInvalidTemplateVariables            = errutil.BadRequest("publicdashboards.invalidTemplateVariables", errutil.WithPublicMessage("Invalid template variable options"))
 	ErrInvalidInterval                     = errutil.BadRequest("publicdashboards.invalidInterval", errutil.WithPublicMessage("intervalMS should be greater than 0"))
 	ErrInvalidMaxDataPoints                = errutil.BadRequest("publicdashboards.maxDataPoints", errutil.WithPublicMessage("maxDataPoints should be greater than 0"))
 	ErrInvalidTimeRange                    = errutil.BadRequest("publicdashboards.invalidTimeRange", errutil.WithPublicMessage("Invalid time range"))

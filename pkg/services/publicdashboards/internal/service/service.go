@@ -587,6 +587,11 @@ func (pd *PublicDashboardServiceImpl) newCreatePublicDashboard(ctx context.Conte
 		share = models.PublicShareType
 	}
 
+	var templateVariables models.TemplateVariables
+	if dto.PublicDashboard.TemplateVariables != nil {
+		templateVariables = *dto.PublicDashboard.TemplateVariables
+	}
+
 	now := time.Now()
 
 	return &models.PublicDashboard{
@@ -597,6 +602,7 @@ func (pd *PublicDashboardServiceImpl) newCreatePublicDashboard(ctx context.Conte
 		AnnotationsEnabled:   annotationsEnabled,
 		TimeSelectionEnabled: timeSelectionEnabled,
 		TimeSettings:         &models.TimeSettings{},
+		TemplateVariables:    templateVariables,
 		Share:                share,
 		CreatedBy:            dto.UserId,
 		CreatedAt:            now,
@@ -617,6 +623,13 @@ func newUpdatePublicDashboard(dto *models.SavePublicDashboardDTO, pd *models.Pub
 		share = pd.Share
 	}
 
+	// Only replace the recorded options when the caller sent some, so an update that only toggles
+	// e.g. annotations does not silently drop them.
+	templateVariables := pd.TemplateVariables
+	if pubdashDTO.TemplateVariables != nil {
+		templateVariables = *pubdashDTO.TemplateVariables
+	}
+
 	return &models.PublicDashboard{
 		Uid:                  pd.Uid,
 		OrgId:                pd.OrgId,
@@ -624,6 +637,7 @@ func newUpdatePublicDashboard(dto *models.SavePublicDashboardDTO, pd *models.Pub
 		AnnotationsEnabled:   annotationsEnabled,
 		TimeSelectionEnabled: timeSelectionEnabled,
 		TimeSettings:         pd.TimeSettings,
+		TemplateVariables:    templateVariables,
 		Share:                share,
 		UpdatedBy:            dto.UserId,
 		UpdatedAt:            time.Now(),

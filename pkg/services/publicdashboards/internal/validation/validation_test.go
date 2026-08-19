@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/grafana/grafana/pkg/services/publicdashboards/internal/models"
@@ -168,5 +170,46 @@ func TestValidUid(t *testing.T) {
 
 	t.Run("false when invalid chars", func(t *testing.T) {
 		assert.False(t, IsValidShortUID("afqrz7j%%"))
+	})
+}
+
+func TestValidateTemplateVariables(t *testing.T) {
+	t.Run("accepts nothing recorded", func(t *testing.T) {
+		require.NoError(t, ValidateTemplateVariables(nil))
+		require.NoError(t, ValidateTemplateVariables(&models.TemplateVariables{}))
+	})
+
+	t.Run("accepts a realistic option list", func(t *testing.T) {
+		require.NoError(t, ValidateTemplateVariables(&models.TemplateVariables{
+			Version: 1,
+			Options: map[string][]string{"host": {"web-1", "web-2"}},
+		}))
+	})
+
+	t.Run("rejects too many variables", func(t *testing.T) {
+		options := make(map[string][]string, maxRecordedVariables+1)
+		for i := 0; i <= maxRecordedVariables; i++ {
+			options[fmt.Sprintf("var%d", i)] = []string{"a"}
+		}
+
+		err := ValidateTemplateVariables(&models.TemplateVariables{Options: options})
+		require.Error(t, err)
+		assert.True(t, models.ErrInvalidTemplateVariables.Is(err))
+	})
+
+	t.Run("rejects too many options for one variable", func(t *testing.T) {
+		err := ValidateTemplateVariables(&models.TemplateVariables{
+			Options: map[string][]string{"host": make([]string, maxRecordedOptionsPerVar+1)},
+		})
+		require.Error(t, err)
+		assert.True(t, models.ErrInvalidTemplateVariables.Is(err))
+	})
+
+	t.Run("rejects an over-long option", func(t *testing.T) {
+		err := ValidateTemplateVariables(&models.TemplateVariables{
+			Options: map[string][]string{"host": {strings.Repeat("a", maxRecordedOptionLength+1)}},
+		})
+		require.Error(t, err)
+		assert.True(t, models.ErrInvalidTemplateVariables.Is(err))
 	})
 }
