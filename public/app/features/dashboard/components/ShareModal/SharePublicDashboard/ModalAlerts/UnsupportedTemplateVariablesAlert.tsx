@@ -30,8 +30,8 @@ export const UnsupportedTemplateVariablesAlert = ({ showDescription = true }: { 
       {showDescription &&
         (variablesEnabled ? (
           <Trans i18nKey="public-dashboard.modal-alerts.locked-template-variable-alert-desc">
-            Query, data source and ad hoc variables keep the value this dashboard was saved with. Only custom and
-            interval variables can be changed by viewers, through the dashboard URL.
+            Data source and ad hoc variables keep the value this dashboard was saved with. Custom, interval and query
+            variables can be changed by viewers through the dashboard URL.
           </Trans>
         ) : (
           <Trans i18nKey="public-dashboard.modal-alerts.unsupported-template-variable-alert-desc">

@@ -13,11 +13,21 @@ export enum PublicDashboardShareType {
   EMAIL = 'email',
 }
 
+/**
+ * Option lists recorded against a public dashboard for variables whose options cannot be read from
+ * the dashboard itself, keyed by variable name. See getRecordedTemplateVariables.
+ */
+export interface TemplateVariables {
+  version: number;
+  options: Record<string, string[]>;
+}
+
 export interface PublicDashboardSettings {
   annotationsEnabled: boolean;
   isEnabled: boolean;
   timeSelectionEnabled: boolean;
   share: PublicDashboardShareType;
+  templateVariables?: TemplateVariables;
 }
 
 export interface PublicDashboard extends PublicDashboardSettings {
@@ -42,9 +52,10 @@ export interface SessionUser {
   totalDashboards: number;
 }
 
-// A viewer can pick a value for these through ?var-name=value, because the author enumerated the
-// options up front and the backend can check a requested value against them.
-const OVERRIDABLE_VARIABLE_TYPES = ['custom', 'interval'];
+// A viewer can pick a value for these through ?var-name=value, because their options are known in
+// advance and the backend can check a requested value against them. Custom and interval variables
+// carry their options in the dashboard; a query variable's are recorded when it is shared.
+const OVERRIDABLE_VARIABLE_TYPES = ['custom', 'interval', 'query'];
 
 // These resolve to a fixed value that is always what the author configured, so freezing them on a
 // public dashboard is not surprising.

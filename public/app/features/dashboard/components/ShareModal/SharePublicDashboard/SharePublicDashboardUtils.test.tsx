@@ -60,19 +60,19 @@ describe('dashboardHasTemplateVariables', () => {
     });
 
     it('does not warn about variables viewers can choose a value for', () => {
-      expect(dashboardHasTemplateVariables(asVariables('custom', 'interval'))).toBe(false);
+      expect(dashboardHasTemplateVariables(asVariables('custom', 'interval', 'query'))).toBe(false);
     });
 
     it('does not warn about variables with a fixed value', () => {
       expect(dashboardHasTemplateVariables(asVariables('constant', 'textbox'))).toBe(false);
     });
 
-    it.each(['query', 'datasource', 'adhoc', 'groupby'])('warns about a %s variable', (type) => {
+    it.each(['datasource', 'adhoc', 'groupby'])('warns about a %s variable', (type) => {
       expect(dashboardHasTemplateVariables(asVariables(type))).toBe(true);
     });
 
     it('warns when only some of the variables are frozen', () => {
-      expect(dashboardHasTemplateVariables(asVariables('custom', 'query'))).toBe(true);
+      expect(dashboardHasTemplateVariables(asVariables('custom', 'adhoc'))).toBe(true);
     });
   });
 });

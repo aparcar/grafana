@@ -11,6 +11,7 @@ import {
   PublicDashboardShareType,
   type SessionDashboard,
   type SessionUser,
+  type TemplateVariables,
 } from 'app/features/dashboard/components/ShareModal/SharePublicDashboard/SharePublicDashboardUtils';
 import { type DashboardModel } from 'app/features/dashboard/state/DashboardModel';
 import { DashboardScene } from 'app/features/dashboard-scene/scene/DashboardScene';
@@ -21,6 +22,54 @@ import {
 
 function isFetchBaseQueryError(error: unknown): error is { error: FetchError } {
   return typeof error === 'object' && error != null && 'error' in error;
+}
+
+const ALL_VALUE = '$__all';
+
+function toOptionValues(options: unknown): string[] {
+  if (!Array.isArray(options)) {
+    return [];
+  }
+
+  return options
+    .map((option) => (option && typeof option === 'object' && 'value' in option ? option.value : undefined))
+    .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number')
+    .map(String)
+    .filter((value) => value !== ALL_VALUE);
+}
+
+/**
+ * Records the resolved options of every query variable on the dashboard.
+ *
+ * A query variable's options come from running its query through the datasource, which only ever
+ * happens in the browser. A public dashboard viewer must not be able to trigger that, so the
+ * options are captured here, while an authenticated author is present, and the backend uses them
+ * as the set of values a viewer is allowed to choose. They are a snapshot: a value that appears in
+ * the datasource later is not selectable until the dashboard is shared again.
+ *
+ * Returns undefined when the dashboard has no query variables, which leaves anything already
+ * recorded untouched.
+ */
+export function getRecordedTemplateVariables(
+  dashboard: DashboardModel | DashboardScene | Pick<DashboardModel, 'uid'>
+): TemplateVariables | undefined {
+  const options: Record<string, string[]> = {};
+
+  if (dashboard instanceof DashboardScene) {
+    for (const variable of dashboard.state.$variables?.state.variables ?? []) {
+      if (variable.state.type === 'query') {
+        options[variable.state.name] = toOptionValues('options' in variable.state ? variable.state.options : undefined);
+      }
+    }
+  } else if ('getVariables' in dashboard && typeof dashboard.getVariables === 'function') {
+    for (const variable of dashboard.getVariables()) {
+      if (variable.type === 'query') {
+        options[variable.name] = toOptionValues('options' in variable ? variable.options : undefined);
+      }
+    }
+  }
+
+  return Object.keys(options).length ? { version: 1, options } : undefined;
 }
 
 export const getConfigError = (err: unknown) => ({
@@ -59,7 +108,10 @@ export const publicDashboardApi = createApi({
         return {
           url: `/dashboards/uid/${dashUid}/public-dashboards`,
           method: 'POST',
-          body: params.payload,
+          body: {
+            templateVariables: getRecordedTemplateVariables(params.dashboard),
+            ...params.payload,
+          },
         };
       },
       async onQueryStarted({ dashboard, payload: { share } }, { dispatch, queryFulfilled }) {
@@ -96,7 +148,12 @@ export const publicDashboardApi = createApi({
         return {
           url: `/dashboards/uid/${dashUid}/public-dashboards/${payload.uid}`,
           method: 'PATCH',
-          body: payload,
+          // Refresh the recorded query variable options on every save, so re-sharing is how an
+          // author picks up values that have appeared in the datasource since.
+          body: {
+            templateVariables: getRecordedTemplateVariables(dashboard),
+            ...payload,
+          },
         };
       },
       async onQueryStarted({ dashboard }, { dispatch, queryFulfilled }) {
